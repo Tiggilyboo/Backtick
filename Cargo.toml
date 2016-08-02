@@ -1,0 +1,7 @@
+[package]
+name = "backtick"
+version = "0.1.0"
+authors = ["Simon Willshire <simonwillshire@gmail.com"]
+
+[dependencies]
+nom = "*"
