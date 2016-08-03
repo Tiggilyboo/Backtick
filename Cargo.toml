@@ -5,4 +5,3 @@ authors = ["Simon Willshire <simonwillshire@gmail.com"]
 
 [dependencies]
 nom = "*"
-bfc = "*"

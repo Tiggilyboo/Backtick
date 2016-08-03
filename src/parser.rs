@@ -1,5 +1,8 @@
-use nom::{IResult, digit, alpha};
+use nom::{IResult, digit, alpha, multispace};
 use std::str;
+use std::str::FromStr;
+
+
 
 #[derive(Debug)]
 pub enum Token {
@@ -10,54 +13,88 @@ pub enum Token {
     Multiplier(u16),
 }
 
-fn number(n: &[u8]) -> IResult<&[u8], u16> {
+named!(number<u16>,
+  map_res!(
     map_res!(
-        n,
-        digit,
-        |d| str::FromStr::from_str(str::from_utf8(d).unwrap())
-    )
-}
+      digit,
+      str::from_utf8
+    ),
+    FromStr::from_str
+  )
+);
 
-named!(label<&[u8], Token>,
-    chain!(
-        tag!("^") ~
-        s: alpha,
-        || Token::Label(s.to_vec())
+named!(string<u8>,
+    map_res!(
+        map_res!(
+            alpha,
+            str::from_utf8
+        ),
+        FromStr::from_str
     )
 );
 
-named!(address<&[u8], Token>,
+named!(address<Token>,
     chain!(
+        blanks? ~
         tag!("@") ~
+        blanks? ~
         n: number,
         || Token::Address(n)
     )
 );
 
-named!(operator<&[u8], Token>,
+named!(label<Token>,
+  chain!(
+      blanks? ~
+      tag!("^") ~
+      blanks? ~
+      s: many0!(string),
+      || Token::Label(s)
+  )
+);
+
+named!(operator<Token>,
     chain!(
-        o: one_of!("><+-,."),
+        blanks? ~
+        o: one_of!("><+-,.") ~
+        blanks?,
         || Token::Operator(o as u8)
-    )
+     )
 );
 
-named!(multiplier<&[u8], Token>,
+named!(multiplier<Token>,
+     chain!(
+         blanks? ~
+         n: preceded!(one_of!("><+-,."), number),
+         || Token::Multiplier(n)
+     )
+);
+
+named!(brackets<Token>,
+  chain!(
+      blanks? ~
+      c: delimited!(char!('['), is_not!("]"), char!(']')),
+      || Token::Loop(c.to_vec())
+  )
+);
+
+named!(blanks,
     chain!(
-        n: preceded!(one_of!("><+-,."), number),
-        || Token::Multiplier(n)
+        many0!(alt!(multispace | eol)),
+        || { &b""[..] }
     )
 );
 
-named!(brackets<&[u8], Token>,
+named!(eol,
     chain!(
-        c: delimited!(char!('['), is_not!("]"), char!(']')),
-        || Token::Loop(c.to_vec())
+        alt!(tag!("\n") | tag!("\r\n") | tag!("\u{2028}") | tag!("\u{2029}")),
+        || { &b""[..] }
     )
 );
 
-named!(token<&[u8], Vec<Token> >,
+named!(token<Vec<Token> >,
     many0!(
-        alt!(label | address | operator | multiplier | brackets)
+        alt!(label | address | multiplier | operator | brackets)
     )
 );
 

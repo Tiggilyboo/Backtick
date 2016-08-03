@@ -16,11 +16,14 @@ fn main(){
     println!("{}", test);
 
     let tokens = parser::parse(test.as_bytes());
-    let mut i = 0;
-    for t in tokens {
-        println!("{:?}", t);
-        println!("Tokens: {}", i);
-        i += 1;
+
+    if tokens.is_some(){
+        for t in tokens {
+            println!("{:?}", t);
+        }
+    } else {
+        println!("No tokens.");
     }
+
     println!("Done.");
 }
