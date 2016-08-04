@@ -1,16 +1,15 @@
-use nom::{IResult, digit, alpha, multispace};
+use nom::{IResult, digit, alphanumeric, multispace, not_line_ending};
 use std::str;
 use std::str::FromStr;
 
-
-
 #[derive(Debug)]
 pub enum Token {
-    Label(Vec<u8>),
+    Label(String),
     Address(u16),
     Loop(Vec<u8>),
     Operator(u8),
-    Multiplier(u16),
+    Multiplier((u8, u16)),
+    Comment(bool),
 }
 
 named!(number<u16>,
@@ -26,7 +25,7 @@ named!(number<u16>,
 named!(string<u8>,
     map_res!(
         map_res!(
-            alpha,
+            alphanumeric,
             str::from_utf8
         ),
         FromStr::from_str
@@ -35,53 +34,51 @@ named!(string<u8>,
 
 named!(address<Token>,
     chain!(
-        blanks? ~
-        tag!("@") ~
-        blanks? ~
-        n: number,
+        n: preceded!(tag!("@"), number),
         || Token::Address(n)
     )
 );
 
 named!(label<Token>,
   chain!(
-      blanks? ~
-      tag!("^") ~
-      blanks? ~
-      s: many0!(string),
-      || Token::Label(s)
+      s: preceded!(tag!("^"), many0!(string)),
+      || Token::Label(String::from_utf8(s.to_vec()).unwrap())
   )
+);
+
+named!(multoperator<u8>,
+    chain!(
+        o: one_of!("><+-,.[]"),
+        || o as u8
+    )
 );
 
 named!(operator<Token>,
     chain!(
-        blanks? ~
-        o: one_of!("><+-,.") ~
-        blanks?,
-        || Token::Operator(o as u8)
+        o: multoperator,
+        || Token::Operator(o)
      )
 );
 
 named!(multiplier<Token>,
      chain!(
-         blanks? ~
-         n: preceded!(one_of!("><+-,."), number),
-         || Token::Multiplier(n)
+         o: multoperator ~
+         n: number,
+         || Token::Multiplier((o, n))
      )
 );
 
 named!(brackets<Token>,
   chain!(
-      blanks? ~
       c: delimited!(char!('['), is_not!("]"), char!(']')),
       || Token::Loop(c.to_vec())
   )
 );
 
-named!(blanks,
+named!(blank<Token>,
     chain!(
-        many0!(alt!(multispace | eol)),
-        || { &b""[..] }
+        alt!(multispace | eol),
+        || Token::Comment(false)
     )
 );
 
@@ -92,9 +89,28 @@ named!(eol,
     )
 );
 
+named!(blanks,
+    chain!(
+        many0!(alt!(multispace | eol)),
+        || { &b""[..] }
+    )
+);
+
+named!(comment<Token>,
+    chain!(
+        blanks? ~
+        alt!(
+            delimited!(tag!("``"), is_not!("``"), tag!("``")) |
+            preceded!(tag!("```"), not_line_ending)
+        ) ~
+        blanks?,
+        || Token::Comment(true)
+    )
+);
+
 named!(token<Vec<Token> >,
     many0!(
-        alt!(label | address | multiplier | operator | brackets)
+        alt!(blank | label | address | multiplier | operator | brackets | comment)
     )
 );
 
