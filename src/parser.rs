@@ -4,12 +4,17 @@ use std::str::FromStr;
 
 #[derive(Debug)]
 pub enum Token {
-    Label(String),
     Address(u16),
-    Loop(Vec<u8>),
-    Operator(u8),
-    Multiplier((u8, u16)),
+    Label(String),
     Comment(bool),
+    Comparator((Vec<u8>, u16, Option<Vec<Token>>, Option<Vec<Token>>)),
+    Condition(Vec<Token>),
+    Execute(String),
+    Function((String, Option<u16>, Option<u16>, Vec<Token>)),
+    Loop(Vec<Token>),
+    Multiplier((u8, u16)),
+    Operator(u8),
+    Set(u16),
 }
 
 named!(number<u16>,
@@ -22,63 +27,10 @@ named!(number<u16>,
   )
 );
 
-named!(string<u8>,
-    map_res!(
-        map_res!(
-            alphanumeric,
-            str::from_utf8
-        ),
-        FromStr::from_str
-    )
-);
-
-named!(address<Token>,
+named!(string<String>,
     chain!(
-        n: preceded!(tag!("@"), number),
-        || Token::Address(n)
-    )
-);
-
-named!(label<Token>,
-  chain!(
-      s: preceded!(tag!("^"), many0!(string)),
-      || Token::Label(String::from_utf8(s.to_vec()).unwrap())
-  )
-);
-
-named!(multoperator<u8>,
-    chain!(
-        o: one_of!("><+-,.[]"),
-        || o as u8
-    )
-);
-
-named!(operator<Token>,
-    chain!(
-        o: multoperator,
-        || Token::Operator(o)
-     )
-);
-
-named!(multiplier<Token>,
-     chain!(
-         o: multoperator ~
-         n: number,
-         || Token::Multiplier((o, n))
-     )
-);
-
-named!(brackets<Token>,
-  chain!(
-      c: delimited!(char!('['), is_not!("]"), char!(']')),
-      || Token::Loop(c.to_vec())
-  )
-);
-
-named!(blank<Token>,
-    chain!(
-        alt!(multispace | eol),
-        || Token::Comment(false)
+        a: alphanumeric,
+        || String::from_utf8(a.to_vec()).unwrap()
     )
 );
 
@@ -96,22 +48,146 @@ named!(blanks,
     )
 );
 
+named!(instruction<u8>,
+    chain!(
+        o: one_of!("><+-,.~"),
+        || o as u8
+    )
+);
+
+// @number
+named!(address<Token>,
+    chain!(
+        n: preceded!(tag!("@"), number),
+        || Token::Address(n)
+    )
+);
+
+// ^label
+named!(label<Token>,
+  chain!(
+      s: preceded!(tag!("^"), string),
+      || Token::Label(s)
+  )
+);
+
+// ><+-,.[]
+named!(operator<Token>,
+    chain!(
+        o: instruction,
+        || Token::Operator(o)
+     )
+);
+
+// <3
+named!(multiplier<Token>,
+     chain!(
+         o: instruction ~
+         n: number,
+         || Token::Multiplier((o, n))
+     )
+);
+
+// [operators~]
+named!(brackets<Token>,
+  chain!(
+      c: delimited!(char!('['), many0!(expression), char!(']')),
+      || Token::Loop(c)
+  )
+);
+
+named!(blank<Token>,
+    chain!(
+        alt!(multispace | eol),
+        || Token::Comment(false)
+    )
+);
+
+// ```comment ``comment``
 named!(comment<Token>,
     chain!(
         blanks? ~
         alt!(
-            delimited!(tag!("``"), is_not!("``"), tag!("``")) |
-            preceded!(tag!("```"), not_line_ending)
+            preceded!(tag!("```"), not_line_ending) |
+            delimited!(tag!("``"), is_not!("``"), tag!("``"))
         ) ~
         blanks?,
         || Token::Comment(true)
     )
 );
 
-named!(token<Vec<Token> >,
-    many0!(
-        alt!(blank | label | address | multiplier | operator | brackets | comment)
+// !function
+named!(execute<Token>,
+    chain!(
+        l: preceded!(tag!("!"), string),
+        || Token::Execute(l)
     )
+);
+
+// =number
+named!(set<Token>,
+    chain!(
+        v: preceded!(tag!("="), number),
+        || Token::Set(v)
+    )
+);
+
+named!(comparator<Token>,
+    chain!(
+        j: alt!(    // condition start, or, and,
+            tag!("?") | tag!("|") | tag!("&")
+        ) ~ blanks? ~
+        c: alt!(    // eq, neq lt, gt, lte, gte,
+            tag!("=") | tag!("'=") | tag!("\\") | tag!("/") | tag!("\\=") | tag!("/=")
+        ) ~ blanks? ~
+        a: opt!(tag!("@")) ~
+        n: number ~ blanks? ~
+        ft: opt!(backtick_expression) ~ blanks? ~
+        fe: opt!(preceded!(tag!(":"), backtick_expression)),
+        || {
+            let mut v = Vec::new();
+            v.extend_from_slice(j);
+            v.extend_from_slice(c);
+            match a {
+                Some(_) => v.insert(0, 1u8),
+                None => v.insert(0, 0u8),
+            }
+
+            return Token::Comparator((v, n, ft, fe));
+        }
+    )
+);
+
+named!(condition<Token>,
+    chain!(
+        c: many1!(comparator),
+        || Token::Condition(c)
+    )
+);
+
+named!(expression<Token>,
+    alt!(blank | comment | label | address | multiplier | brackets |
+        operator | condition | execute | set)
+);
+
+named!(backtick_expression<Vec<Token> >,
+    delimited!(char!('`'), many0!(expression), char!('`'))
+);
+
+// ^label @start : end `expressions`
+named!(backtick<Token>,
+    chain!(
+        l: preceded!(tag!("^"), string) ~
+        blanks? ~
+        s: opt!(preceded!(tag!("@"), number)) ~ blanks? ~
+        o: opt!(preceded!(tag!(":"), number)) ~ blanks? ~
+        c: preceded!(tag!("!"), backtick_expression),
+        || Token::Function((l, s, o, c))
+    )
+);
+
+named!(token<Vec<Token> >,
+    many0!(alt_complete!(backtick | expression))
 );
 
 pub fn parse(i: &[u8]) -> Option<Vec<Token> > {

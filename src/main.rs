@@ -1,29 +1,21 @@
 #[macro_use]
 extern crate nom;
 
+mod ast;
 mod parser;
 
 fn main(){
-    let test = "
-        >3
-        @0
-        +10
-        ^test
-        [->+<]
-        @0.3
+    let p = b"
+        @0,^in
+        @1^out
+        ^copy @0:1 !`
+            @in[->+>+<2]
+            @out.
+            ~
+        `
+        @in!copy
     ";
-    print!("Parsing: ");
-    println!("{}", test);
 
-    let tokens = parser::parse(test.as_bytes());
-
-    if tokens.is_some(){
-        for t in tokens {
-            println!("{:?}", t);
-        }
-    } else {
-        println!("No tokens.");
-    }
-
-    println!("Done.");
+    let tokens = parser::parse(p);
+    let graph = ast::process(tokens.unwrap());
 }
