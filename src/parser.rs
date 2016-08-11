@@ -2,7 +2,7 @@ use nom::{IResult, digit, alphanumeric, multispace, not_line_ending};
 use std::str;
 use std::str::FromStr;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Token {
     Address(u16),
     Label(String),

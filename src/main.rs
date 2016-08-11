@@ -1,7 +1,7 @@
 #[macro_use]
 extern crate nom;
 
-mod ast;
+mod cfg;
 mod parser;
 
 fn main(){
@@ -17,5 +17,5 @@ fn main(){
     ";
 
     let tokens = parser::parse(p);
-    let graph = ast::process(tokens.unwrap());
+    let graph = cfg::process(tokens.unwrap());
 }
