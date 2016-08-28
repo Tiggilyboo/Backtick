@@ -3,6 +3,7 @@ extern crate nom;
 
 mod cfg;
 mod parser;
+mod comparator;
 
 fn main(){
     let p = b"
@@ -17,5 +18,5 @@ fn main(){
     ";
 
     let tokens = parser::parse(p);
-    let graph = cfg::process(tokens.unwrap());
+    cfg::process(tokens.unwrap().as_mut());
 }

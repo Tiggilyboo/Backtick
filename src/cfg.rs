@@ -1,76 +1,71 @@
-use std::hash::{Hash, SipHasher, Hasher};
-
-use std::rc::Rc;
+use std::collections::HashMap;
 use std::cell::RefCell;
-use std::collections::HashSet;
+use std::io;
 
 use parser;
 use parser::Token;
+use comparator;
 
-pub struct Node {
-    hash: u32,
-    data: Token,
-    edges: Vec<Rc<RefCell<&'static Node>>>,
+#[derive(Debug, Hash, Eq, PartialEq)]
+pub struct BacktickExpression {
+    condition: Option<u8>,
+    operations: Option<Vec<u8>>,
+    start: Option<u16>,
+    end: Option<u16>
 }
 
-fn random(s: &mut u32) -> u32 {
-    *s ^= *s << 13;
-    *s ^= *s >> 17;
-    *s ^= *s << 5;
-    *s
+#[derive(Debug)]
+pub struct State {
+    position: u16,
+    expressions: HashMap<&'static str, BacktickExpression>,
+    memory: Vec<u8>,
+    inloop: bool,
 }
 
-impl Node {
-    fn new(hash : &mut u32, t: Token) -> Rc<RefCell<Node>> {
-        Rc::new(RefCell::new(Node {
-            hash: random(hash),
-            data: t,
-            edges: Vec::new(),
-        }))
-    }
+impl State {
 
-    fn traverse<T>(&self, t: &T, seen: &mut HashSet<u32>)
-        where T: Fn(Token)
-    {
-        if seen.contains(&self.hash){
-            return;
-        }
-        t(self.data.clone());
-        seen.insert(self.hash);
-        for n in &self.edges {
-            n.borrow().traverse(t, seen);
-        }
-    }
-
-    fn root(&self) -> Rc<RefCell<&'static Node>> {
-        let r = self.edges[0].clone();
-        r
-    }
-
-    fn next(&self, t: Token) {
+    // Process each node based on its parent information (store position, declare labels, etc)
+    pub fn next(&mut self, t: Token) {
         match t {
-            Token::Address(n) => {},
-            Token::Comment(b) => {},
-            Token::Comparator(cmp) => {},
-            Token::Condition(expr) => {},
-            Token::Execute(name) => {},
-            Token::Function((name, start, end, expr)) => {},
-            Token::Label(name) => {},
-            Token::Loop(expr) => {},
-            Token::Multiplier((op, n)) => {},
-            Token::Operator(op) => {},
-            Token::Set(n) => {}
+            Token::Address(ref address) => {},
+            Token::Comment(comment) => {},
+            Token::Comparator((ref logic, address, ref texpression, ref fexpression)) => {},
+            Token::Condition(ref comparators) => {},
+            Token::Execute(ref label) => {},
+            Token::Function((ref label, start, end, ref expression)) => {},
+            Token::Label(ref label) => {},
+            Token::Loop(ref expression) => {},
+            Token::Multiplier((operator, factor)) => {},
+            Token::Operator(operator) => {
+                match operator as char {
+                    '>' => self.position += 1,
+                    '<' => self.position -= 1,
+                    '+' => self.memory[self.position as usize] += 1,
+                    '-' => self.memory[self.position as usize] -= 1,
+                    ',' => {},
+                    '.' => {
+                        print!("{}", self.memory[self.position as usize] as char);
+                    },
+                    '~' => self.inloop = false,
+                    _ => {},
+                }
+            },
+            Token::Set(value) => {
+                self.memory[self.position as usize] = value as u8;
+            },
         }
     }
 }
 
-pub fn process(tokens: Vec<Token>) -> Rc<RefCell<Node>> {
-    let mut tst: Vec<&'static Token> = Vec::new();
-    let mut seed = 7u32;
-    let mut cfg = Node::new(&mut seed, tokens[0].clone());
-    for t in tokens {
-        cfg.borrow_mut().next(t)
-    }
+pub fn process(tokens: &mut Vec<Token>) {
+    let mut s = State {
+        position: 0,
+        expressions: HashMap::new(),
+        memory: vec![],
+        inloop: false,
+    };
 
-    cfg
+    while !tokens.is_empty(){
+        s.next(tokens.pop().unwrap());
+    }
 }

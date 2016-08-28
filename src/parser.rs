@@ -138,7 +138,7 @@ named!(comparator<Token>,
             tag!("?") | tag!("|") | tag!("&")
         ) ~ blanks? ~
         c: alt!(    // eq, neq lt, gt, lte, gte,
-            tag!("=") | tag!("'=") | tag!("\\") | tag!("/") | tag!("\\=") | tag!("/=")
+            tag!("=") | tag!("'") | tag!("\\") | tag!("/") | tag!("\\=") | tag!("/=")
         ) ~ blanks? ~
         a: opt!(tag!("@")) ~
         n: number ~ blanks? ~
