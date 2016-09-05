@@ -10,9 +10,9 @@ pub enum Comparator {
 }
 
 impl Comparator {
-    pub fn parse(&self, t: Token) -> u8 {
+    pub fn new(t: &Token) -> u8 {
         match t {
-            Token::Comparator((ref cmp, rhs, ref t, ref f)) => {
+            &Token::Comparator((ref cmp, rhs, ref t, ref f)) => {
                 let mut ct = 0u8;
                 let mut c: Vec<u8> = cmp.clone();
 
@@ -46,16 +46,22 @@ impl Comparator {
         }
     }
 
-    pub fn is_eq(&self, c: u8) -> bool {
+    pub fn is_eq(c: u8) -> bool {
         return c & Comparator::EQ as u8 > 0;
     }
-    pub fn is_lt(&self, c: u8) -> bool {
+    pub fn is_neq(c: u8) -> bool {
+        return c & Comparator::NEQ as u8 > 0;
+    }
+    pub fn is_lt(c: u8) -> bool {
         return c & Comparator::LT as u8 > 0;
     }
-    pub fn is_gt(&self, c: u8) -> bool {
+    pub fn is_gt(c: u8) -> bool {
         return c & Comparator::GT as u8 > 0;
     }
-    pub fn is_or(&self, c: u8) -> bool {
+    pub fn is_or(c: u8) -> bool {
         return c & Comparator::OR as u8 > 0;
+    }
+    pub fn is_and(c: u8) -> bool {
+        return c & Comparator::OR as u8 == 0;
     }
 }

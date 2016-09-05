@@ -7,7 +7,7 @@ pub enum Token {
     Address(u16),
     Label(String),
     Comment(bool),
-    Comparator((Vec<u8>, u16, Option<Vec<Token>>, Option<Vec<Token>>)),
+    Comparator((Vec<u8>, u8, Option<Vec<Token>>, Option<Vec<Token>>)),
     Condition(Vec<Token>),
     Execute(String),
     Function((String, Option<u16>, Option<u16>, Vec<Token>)),
@@ -15,6 +15,7 @@ pub enum Token {
     Multiplier((u8, u16)),
     Operator(u8),
     Set(u16),
+    Array(Vec<u8>),
 }
 
 named!(number<u16>,
@@ -132,6 +133,24 @@ named!(set<Token>,
     )
 );
 
+named!(array<Token>,
+    chain!(
+        a: alt!(
+            delimited!(tag!("\""), string, tag!("\"")) | delimited!(tag!("{"),
+            many0!(
+                chain!(
+                    n: number
+                    ~ blanks?
+                    opt!(tag!(","))
+                    ~ blanks?
+                    || n
+                ), tag!("}")
+            )
+        ) || Token::Array(a)
+    )
+);
+
+// ? / 3 & \= 1 && '= 2 @0 `=1`:`=0`
 named!(comparator<Token>,
     chain!(
         j: alt!(    // condition start, or, and,
@@ -153,7 +172,7 @@ named!(comparator<Token>,
                 None => v.insert(0, 0u8),
             }
 
-            return Token::Comparator((v, n, ft, fe));
+            return Token::Comparator((v, n as u8, ft, fe));
         }
     )
 );
@@ -166,11 +185,11 @@ named!(condition<Token>,
 );
 
 named!(expression<Token>,
-    alt!(blank | comment | label | address | multiplier | brackets |
+    alt!(blank | comment | backtick | label | address | multiplier | brackets |
         operator | condition | execute | set)
 );
 
-named!(backtick_expression<Vec<Token> >,
+named!(backtick_expression<Vec<Token>>,
     delimited!(char!('`'), many0!(expression), char!('`'))
 );
 
@@ -186,8 +205,8 @@ named!(backtick<Token>,
     )
 );
 
-named!(token<Vec<Token> >,
-    many0!(alt_complete!(backtick | expression))
+named!(token<Vec<Token>>,
+    many0!(expression)
 );
 
 pub fn parse(i: &[u8]) -> Option<Vec<Token> > {
