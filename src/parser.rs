@@ -1,10 +1,11 @@
-use nom::{IResult, digit, alphanumeric, multispace, not_line_ending};
+use nom::{digit, alphanumeric, multispace, not_line_ending};
 use std::str;
 use std::str::FromStr;
 
 #[derive(Debug, Clone)]
 pub enum Token {
     Address(u16),
+    TaggedAddress(String),
     Label(String),
     Comment(bool),
     Comparator((Vec<u8>, u8, Option<Vec<Token>>, Option<Vec<Token>>)),
@@ -88,9 +89,15 @@ named!(instruction<u8>,
 
 // @number
 named!(address<Token>,
-    chain!(
-        n: preceded!(tag!("@"), number),
-        || Token::Address(n)
+    alt!(
+        chain!(
+            n: preceded!(tag!("@"), number),
+            || Token::Address(n)
+        ) |
+        chain!(
+            l: preceded!(tag!("@"), string),
+            || Token::TaggedAddress(l)
+        )
     )
 );
 
@@ -257,12 +264,18 @@ named!(token<Vec<Token> >,
     many0!(expression)
 );
 
-pub fn parse(i: &[u8]) -> Option<Vec<Token>> {
+pub fn parse(i: &[u8], debug: bool) -> Option<Vec<Token>> {
     let parsed = token(i);
 
-    if parsed.is_done(){
+    let p = if parsed.is_done(){
         Some(parsed.unwrap().1)
     } else {
         None
+    };
+
+    if debug {
+        println!("{:?}", p);
     }
+
+    p
 }

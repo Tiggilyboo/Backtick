@@ -1,16 +1,16 @@
 use std::collections::HashMap;
 use std::io;
 use std::io::BufRead;
-use std::hash::{Hash, Hasher, SipHasher};
+use std::hash::{Hash, Hasher};
+use std::str::FromStr;
 
-use parser;
 use parser::Token;
 use comparator::Comparator;
 
 #[derive(Debug, PartialEq)]
 pub struct BacktickExpression {
     identifier: Option<String>,
-    operations: Option<Vec<Token>>,
+    operations: Option<Vec<Token> >,
     start: Option<u16>,
     end: Option<u16>,
 }
@@ -67,7 +67,7 @@ impl State {
         }
     }
 
-    fn processOperator(&mut self, c: char, multiplier: u16){
+    fn process_operator(&mut self, c: char, multiplier: u16){
         match c as char {
             '>' => self.position += multiplier,
             '<' => self.position -= multiplier,
@@ -91,16 +91,18 @@ impl State {
         }
     }
 
-    pub fn start(&mut self, start: Token){
-        self.stack.push(start);
-    }
-
-    fn next(&mut self, t: Token) {
-        match t {
-            Token::Address(ref address) => {
-                self.position = *address;
+    fn next(&mut self) {
+        match self.stack.pop() {
+            Some(Token::Address(address)) => {
+                self.position = address;
             },
-            Token::Condition(ref comparators) => {
+            Some(Token::TaggedAddress(ref label)) => {
+                let e = self.expressions.get(label);
+                if e.is_some() && e.unwrap().start.is_some() {
+                    self.position = e.unwrap().start.unwrap();
+                }
+            },
+            Some(Token::Condition(ref comparators)) => {
                 let mut valid: bool = true;
                 for c in comparators {
                     let cmp = &Comparator::new(c);
@@ -125,14 +127,17 @@ impl State {
                     }
                 }
             },
-            Token::Execute(ref label) => {
-                match self.expressions.get(label).unwrap().operations.clone().unwrap() {
+            Some(Token::Execute(ref label)) => {
+                match self.expressions.get(label) {
                     t => {
-                        self.populate_stack(t);
+                        if self.expressions.get(label).is_some(){
+                            let mut o = &mut t.unwrap().operations.clone().unwrap();
+                            self.stack.append(o);
+                        }
                     }
                 }
             },
-            Token::Function((ref label, start, end, ref expression)) => {
+            Some(Token::Function((ref label, start, end, ref expression))) => {
                 self.expressions.insert(label.clone(), BacktickExpression{
                     identifier: Some(label.clone()),
                     operations: Some(expression.clone()),
@@ -140,7 +145,7 @@ impl State {
                     end: end,
                 });
             },
-            Token::Label(ref label) => {
+            Some(Token::Label(ref label)) => {
                 self.expressions.insert(label.clone(), BacktickExpression{
                     identifier: Some(label.clone()),
                     operations: None,
@@ -148,19 +153,19 @@ impl State {
                     end: None,
                 });
             },
-            Token::Loop(ref expression) => {
+            Some(Token::Loop(ref expression)) => {
                 self.populate_stack(expression.clone());
             },
-            Token::Multiplier((operator, multiplier)) => {
-                self.processOperator(operator as char, multiplier);
+            Some(Token::Multiplier((operator, multiplier))) => {
+                self.process_operator(operator as char, multiplier);
             },
-            Token::Operator(operator) => {
-                self.processOperator(operator as char, 1u16);
+            Some(Token::Operator(operator)) => {
+                self.process_operator(operator as char, 1u16);
             },
-            Token::Set(value) => {
+            Some(Token::Set(value)) => {
                 self.set(value);
             },
-            Token::Array(contents) => {
+            Some(Token::Array(contents)) => {
                 let s = self.position as usize + contents.len() as usize;
                 let l = self.memory.len() as usize;
 
@@ -184,8 +189,11 @@ pub fn process(tokens: &mut Vec<Token>) {
         memory: vec![],
         stack: vec![],
     };
+    s.stack.append(tokens);
 
-    while !tokens.is_empty(){
-        s.next(tokens.pop().unwrap());
+    while !s.stack.is_empty(){
+        s.next();
     }
+
+    print!("{:?}", s);
 }

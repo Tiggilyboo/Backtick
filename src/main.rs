@@ -10,13 +10,13 @@ fn main(){
         @0,^in
         @1^out
         ^copy @0:1 !`
-            @in[->+>+<2]
+            [->+>+<2]
             @out.
             ~
         `
         @in!copy
     ";
 
-    let tokens = parser::parse(p);
+    let tokens = parser::parse(p, true);
     cfg::process(tokens.unwrap().as_mut());
 }
