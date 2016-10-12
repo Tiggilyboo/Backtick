@@ -1,24 +1,33 @@
 use std::collections::HashMap;
 use std::io;
+use std::io::BufRead;
+use std::hash::{Hash, Hasher, SipHasher};
 
 use parser;
 use parser::Token;
 use comparator::Comparator;
 
-#[derive(Debug, Hash, Eq, PartialEq)]
+#[derive(Debug, PartialEq)]
 pub struct BacktickExpression {
-    identifier: String,
+    identifier: Option<String>,
     operations: Option<Vec<Token>>,
     start: Option<u16>,
     end: Option<u16>,
 }
 
-#[derive(Debug, Hash, Eq, ParialEq)]
+#[derive(Debug, PartialEq)]
 pub struct State {
     position: u16,
-    expressions: HashMap<BacktickExpression>,
+    expressions: HashMap<String, BacktickExpression>,
     memory: Vec<u8>,
     stack: Vec<Token>,
+}
+
+impl Hash for State {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.position.hash(state);
+        self.memory.hash(state);
+    }
 }
 
 impl State {
@@ -26,47 +35,55 @@ impl State {
         return self.memory[self.position as usize];
     }
 
-    fn set(&self, value: u8) {
-        self.memory[self.position as usize] = value;
+    fn set(&mut self, value: u16) {
+        let s = self.memory.len() as isize - self.position as isize;
+        for _ in 0..s {
+            self.memory.push(0u8);
+        }
+        self.memory[self.position as usize] = value as u8;
     }
 
-    fn populateStack(&self, expr: Option<Vec<Token>>) {
-        while expr.is_some() && !expr.unwrap().is_empty(){
-            let e = expr.unwrap().pop();
-            while(e.unwrap())
-                self.stack.push(expr.unwrap());
+    fn populate_stack(&mut self, expr: Vec<Token>) {
+        let mut ex = expr.clone();
+
+        while !expr.is_empty(){
+            let e = ex.pop();
+            if e.is_some(){
+                self.stack.push(e.unwrap());
             }
         }
     }
 
-    pub fn validLogic(c: Token) -> bool {
-        let cmp = Comparator::new(c);
-        match c { &Token::Comparator((logic, value, texp, fexp)) => {
-            (Comparator::is_eq(cmp) && self.current() == value)
-            || (Comparator::is_neq(cmp) && self.current() != value)
-            || (Comparator::is_lt(cmp) && self.current() < value)
-            || (Comparator::is_gt(cmp) && self.current() > value)
-        }, _ => {}}
+    pub fn valid_logic(current: u8, c: &Token) -> bool {
+        let cmp = Comparator::new(&c);
+        match c {
+            &Token::Comparator((ref comp, value, ref t, ref f)) => {
+                (Comparator::is_eq(cmp) && current == value)
+                || (Comparator::is_neq(cmp) && current != value)
+                || (Comparator::is_lt(cmp) && current < value)
+                || (Comparator::is_gt(cmp) && current > value)
+            },
+            _ => false,
+        }
     }
 
-    fn processOperator(&self, c: char, multiplier: u16){
-        match operator as char {
+    fn processOperator(&mut self, c: char, multiplier: u16){
+        match c as char {
             '>' => self.position += multiplier,
             '<' => self.position -= multiplier,
-            '+' => self.memory[self.position as usize] += multiplier,
-            '-' => self.memory[self.position as usize] -= multiplier,
+            '+' => self.memory[self.position as usize] += multiplier as u8,
+            '-' => self.memory[self.position as usize] -= multiplier as u8,
             ',' => {
-                let stdin = io::stdin();
-                for l in stdin.lock().lines() {
-                    self.memory.extend_from_slice(line.unwrap());
-                    break;
-                }
+                let mut l = String::new();
+                let sin = io::stdin();
+                sin.lock().read_line(&mut l).unwrap();
+                self.memory.extend_from_slice(l.as_bytes());
             },
             '.' => {
                 let l = self.memory.len();
-                for m = 0..multiplier {
-                    if(l < self.position + m) { break; }
-                    print!("{}", self.memory[self.position+m as usize] as char);
+                for m in 0..multiplier {
+                    if l < (self.position as usize + m as usize) { break; }
+                    print!("{}", self.memory[self.position as usize + m as usize] as char);
                 }
             },
             '~' => self.stack.clear(),
@@ -74,11 +91,8 @@ impl State {
         }
     }
 
-    pub fn run(&self, start: Token){
+    pub fn start(&mut self, start: Token){
         self.stack.push(start);
-        while(!self.stack.is_empty()){
-            self.next(self.stack.pop());
-        }
     }
 
     fn next(&mut self, t: Token) {
@@ -87,72 +101,74 @@ impl State {
                 self.position = *address;
             },
             Token::Condition(ref comparators) => {
-                let valid: bool = true;
+                let mut valid: bool = true;
                 for c in comparators {
-                    let cmp = Comparator::new(c);
-                    match c { &Token::Comparator((logic, value, texp, fexp)) => {
-                        if(Comparator::is_or(cmp)){
-                            valid = State::validLogic(c);
-                            if(valid){
-                                self.populateStack(texp);
+                    let cmp = &Comparator::new(c);
+                    match c { &Token::Comparator((ref logic, value, ref texp, ref fexp)) => {
+                        if Comparator::is_or(*cmp){
+                            valid = State::valid_logic(self.current(), c);
+                            if valid && texp.is_some() {
+                                self.populate_stack(texp.clone().unwrap());
                                 break;
-                            } else {
-                                self.populateStack(fexp);
+                            } else if fexp.is_some() {
+                                self.populate_stack(fexp.clone().unwrap());
                             }
-                        } else if(Comparator::is_and(cmp) && valid) {
-                            valid = State::validLogic(c);
-                            if(valid){
-                                self.populateStack(texp);
+                        } else if Comparator::is_and(*cmp) && valid {
+                            valid = State::valid_logic(self.current(), c);
+                            if valid && texp.is_some(){
+                                self.populate_stack(texp.clone().unwrap());
                                 break;
-                            } else {
-                                self.populateStack(fexp);
+                            } else if fexp.is_some(){
+                                self.populate_stack(fexp.clone().unwrap());
                             }
                         }}, _ => {}
                     }
                 }
             },
             Token::Execute(ref label) => {
-                if(self.expressions.has(label) && self.expressions[label].operations.is_some()){
-                    self.populateStack(self.expressions[label].operations);
+                match self.expressions.get(label).unwrap().operations.clone().unwrap() {
+                    t => {
+                        self.populate_stack(t);
+                    }
                 }
             },
             Token::Function((ref label, start, end, ref expression)) => {
-                self.expressions.push(BacktickExpression {
-                    identifer: Some(label),
-                    expressions: Some(expression),
-                    start: Some(start),
-                    end: Some(end),
+                self.expressions.insert(label.clone(), BacktickExpression{
+                    identifier: Some(label.clone()),
+                    operations: Some(expression.clone()),
+                    start: start,
+                    end: end,
                 });
             },
             Token::Label(ref label) => {
-                self.expressions.push(BacktickExpression {
-                    identifer: Some(label),
-                    expressions: None,
-                    start: Some(self.position),
+                self.expressions.insert(label.clone(), BacktickExpression{
+                    identifier: Some(label.clone()),
+                    operations: None,
+                    start: None,
                     end: None,
                 });
             },
             Token::Loop(ref expression) => {
-                self.extend_from_slice(expression.as_slice());
+                self.populate_stack(expression.clone());
             },
             Token::Multiplier((operator, multiplier)) => {
-                self.processOperator(operator, multiplier);
+                self.processOperator(operator as char, multiplier);
             },
             Token::Operator(operator) => {
-                self.processOperator(operator, 1u16);
+                self.processOperator(operator as char, 1u16);
             },
             Token::Set(value) => {
-                for c = 0..(self.memory.len() - self.position) {
-                    self.memory.push(0u8);
-                }
-                self.memory[self.position as usize] = value as u8;
+                self.set(value);
             },
             Token::Array(contents) => {
-                for c = self.position..(self.position + contents.len()){
-                    if(c > self.memory.len()){
-                        self.memory.push(contents[c - self.position as usize]);
+                let s = self.position as usize + contents.len() as usize;
+                let l = self.memory.len() as usize;
+
+                for c in self.position as usize..s {
+                    if c > l {
+                        self.memory.push(contents[c as usize - self.position as usize]);
                     } else {
-                        self.memory[c] = contents[c - self.position as usize];
+                        self.memory[c] = contents[c as usize - self.position as usize];
                     }
                 }
             },
@@ -164,7 +180,7 @@ impl State {
 pub fn process(tokens: &mut Vec<Token>) {
     let mut s = State {
         position: 0,
-        expressions: vec![],
+        expressions: HashMap::new(),
         memory: vec![],
         stack: vec![],
     };

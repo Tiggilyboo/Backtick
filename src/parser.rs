@@ -18,6 +18,25 @@ pub enum Token {
     Array(Vec<u8>),
 }
 
+impl PartialEq for Token {
+    fn eq(&self, other: &Token) -> bool {
+        match (self, other){
+            (&Token::Address(ref a), &Token::Address(ref b)) => a == b,
+            (&Token::Comment(ref a), &Token::Comment(ref b)) => a == b,
+            (&Token::Comparator(ref a), &Token::Comparator(ref b)) => a == b,
+            (&Token::Condition(ref a), &Token::Condition(ref b)) => a == b,
+            (&Token::Execute(ref a), &Token::Execute(ref b)) => a == b,
+            (&Token::Function(ref a), &Token::Function(ref b)) => a == b,
+            (&Token::Loop(ref a), &Token::Loop(ref b)) => a == b,
+            (&Token::Multiplier(ref a), &Token::Multiplier(ref b)) => a == b,
+            (&Token::Operator(ref a), &Token::Operator(ref b)) => a == b,
+            (&Token::Set(ref a), &Token::Set(ref b)) => a == b,
+            (&Token::Array(ref a), &Token::Array(ref b)) => a == b,
+            _ => false,
+        }
+    }
+}
+
 named!(number<u16>,
   map_res!(
     map_res!(
@@ -27,6 +46,17 @@ named!(number<u16>,
     FromStr::from_str
   )
 );
+
+named!(byte<u8>,
+  map_res!(
+    map_res!(
+      digit,
+      str::from_utf8
+    ),
+    FromStr::from_str
+  )
+);
+
 
 named!(string<String>,
     chain!(
@@ -133,20 +163,38 @@ named!(set<Token>,
     )
 );
 
-named!(array<Token>,
+// = { 1, 2, 3, ... }
+named!(setArray<Token>,
     chain!(
-        a: alt!(
-            delimited!(tag!("\""), string, tag!("\"")) | delimited!(tag!("{"),
-            many0!(
-                chain!(
-                    n: number
-                    ~ blanks?
-                    opt!(tag!(","))
-                    ~ blanks?
-                    || n
-                ), tag!("}")
+        tag!("=") ~ blanks? ~
+        tag!("{") ~
+        arr: many0!(
+            chain!(
+                blanks? ~
+                a: byte ~
+                blanks? ~
+                opt!(tag!(",")) ~ blanks?,
+                || a as u8
             )
-        ) || Token::Array(a)
+        ) ~
+        tag!("}"),
+        || Token::Array(arr)
+    )
+);
+
+// = `some text as u8's`
+named!(byteArray<Token>,
+    chain!(
+        tag!("=") ~ blanks? ~
+        tag!("`") ~
+        arr: many0!(
+            chain!(
+                a: byte,
+                || a as u8
+            )
+        ) ~
+        tag!("`"),
+        || Token::Array(arr)
     )
 );
 
@@ -186,10 +234,10 @@ named!(condition<Token>,
 
 named!(expression<Token>,
     alt!(blank | comment | backtick | label | address | multiplier | brackets |
-        operator | condition | execute | set)
+        operator | condition | execute | set | byteArray | setArray)
 );
 
-named!(backtick_expression<Vec<Token>>,
+named!(backtick_expression<Vec<Token> >,
     delimited!(char!('`'), many0!(expression), char!('`'))
 );
 
@@ -205,18 +253,16 @@ named!(backtick<Token>,
     )
 );
 
-named!(token<Vec<Token>>,
+named!(token<Vec<Token> >,
     many0!(expression)
 );
 
-pub fn parse(i: &[u8]) -> Option<Vec<Token> > {
-    let parsed: IResult<&[u8], Vec<Token> > = token(i);
+pub fn parse(i: &[u8]) -> Option<Vec<Token>> {
+    let parsed = token(i);
 
-    if parsed.is_done() {
+    if parsed.is_done(){
         Some(parsed.unwrap().1)
-    } else if parsed.is_incomplete(){
-        None
-    } else { //if parsed.is_err(){
+    } else {
         None
     }
 }
