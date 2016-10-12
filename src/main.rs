@@ -17,6 +17,6 @@ fn main(){
         @in!copy
     ";
 
-    let tokens = parser::parse(p, true);
-    cfg::process(tokens.unwrap().as_mut());
+    let tokens = parser::parse(p, false);
+    cfg::process(tokens.unwrap().as_mut(), true);
 }

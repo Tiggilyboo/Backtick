@@ -95,11 +95,13 @@ impl State {
         match self.stack.pop() {
             Some(Token::Address(address)) => {
                 self.position = address;
+                println!("pos: {:?}", self.position);
             },
             Some(Token::TaggedAddress(ref label)) => {
                 let e = self.expressions.get(label);
                 if e.is_some() && e.unwrap().start.is_some() {
                     self.position = e.unwrap().start.unwrap();
+                    println!("pos({:?}): {:?}", label, self.position);
                 }
             },
             Some(Token::Condition(ref comparators)) => {
@@ -111,16 +113,20 @@ impl State {
                             valid = State::valid_logic(self.current(), c);
                             if valid && texp.is_some() {
                                 self.populate_stack(texp.clone().unwrap());
+                                println!("texp: {:?}", texp);
                                 break;
                             } else if fexp.is_some() {
+                                println!("fexp: {:?}", texp);
                                 self.populate_stack(fexp.clone().unwrap());
                             }
                         } else if Comparator::is_and(*cmp) && valid {
                             valid = State::valid_logic(self.current(), c);
                             if valid && texp.is_some(){
+                                println!("texp: {:?}", texp);
                                 self.populate_stack(texp.clone().unwrap());
                                 break;
                             } else if fexp.is_some(){
+                                println!("fexp: {:?}", fexp);
                                 self.populate_stack(fexp.clone().unwrap());
                             }
                         }}, _ => {}
@@ -128,13 +134,12 @@ impl State {
                 }
             },
             Some(Token::Execute(ref label)) => {
-                match self.expressions.get(label) {
-                    t => {
-                        if self.expressions.get(label).is_some(){
-                            let mut o = &mut t.unwrap().operations.clone().unwrap();
-                            self.stack.append(o);
-                        }
-                    }
+                if self.expressions.get(label).is_some(){
+                    let mut o = &mut self.expressions.get(label).unwrap().operations.clone().unwrap();
+                    println!("exec({:?})", label);
+                    self.stack.append(o);
+                } else {
+                    println!("exec not found: {:?}", label);
                 }
             },
             Some(Token::Function((ref label, start, end, ref expression))) => {
@@ -149,21 +154,26 @@ impl State {
                 self.expressions.insert(label.clone(), BacktickExpression{
                     identifier: Some(label.clone()),
                     operations: None,
-                    start: None,
-                    end: None,
+                    start: Some(self.position),
+                    end: Some(self.position),
                 });
+                println!("label({:?}): {:?}", label, self.position);
             },
             Some(Token::Loop(ref expression)) => {
                 self.populate_stack(expression.clone());
+                println!("loop: {:?}", expression);
             },
             Some(Token::Multiplier((operator, multiplier))) => {
                 self.process_operator(operator as char, multiplier);
+                println!("mult({:?}): {:?}", operator, multiplier);
             },
             Some(Token::Operator(operator)) => {
                 self.process_operator(operator as char, 1u16);
+                println!("op: {:?}", operator, );
             },
             Some(Token::Set(value)) => {
                 self.set(value);
+                println!("set: {:?}", value);
             },
             Some(Token::Array(contents)) => {
                 let s = self.position as usize + contents.len() as usize;
@@ -176,24 +186,29 @@ impl State {
                         self.memory[c] = contents[c as usize - self.position as usize];
                     }
                 }
+                println!("array({:?}:{:?}): {:?}", self.position, s, contents);
             },
             _ => {}
         }
     }
 }
 
-pub fn process(tokens: &mut Vec<Token>) {
+pub fn process(tokens: &mut Vec<Token>, debug: bool) {
     let mut s = State {
         position: 0,
         expressions: HashMap::new(),
         memory: vec![],
         stack: vec![],
     };
-    s.stack.append(tokens);
 
+    while !tokens.is_empty(){
+        s.stack.push(tokens.pop().unwrap());
+    }
     while !s.stack.is_empty(){
         s.next();
     }
 
-    print!("{:?}", s);
+    if debug {
+        print!("{:?}", s);
+    }
 }

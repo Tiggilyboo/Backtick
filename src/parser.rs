@@ -23,6 +23,7 @@ impl PartialEq for Token {
     fn eq(&self, other: &Token) -> bool {
         match (self, other){
             (&Token::Address(ref a), &Token::Address(ref b)) => a == b,
+            (&Token::TaggedAddress(ref a), &Token::TaggedAddress(ref b)) => a == b,
             (&Token::Comment(ref a), &Token::Comment(ref b)) => a == b,
             (&Token::Comparator(ref a), &Token::Comparator(ref b)) => a == b,
             (&Token::Condition(ref a), &Token::Condition(ref b)) => a == b,
@@ -240,7 +241,7 @@ named!(condition<Token>,
 );
 
 named!(expression<Token>,
-    alt!(blank | comment | backtick | label | address | multiplier | brackets |
+    alt_complete!(blank | comment | backtick | label | address | multiplier | brackets |
         operator | condition | execute | set | byteArray | setArray)
 );
 
